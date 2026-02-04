@@ -689,13 +689,12 @@ fn draw_playing(ui: &Ui, profile: &PlayerProfile, game: &Game) {
         );
     }
 
-    let pr = game.player.rect();
     let player_color = if game.player.is_invincible() { SKYBLUE } else { LIME };
-    draw_triangle(
-        vec2(pr.x + pr.w * 0.5, pr.y),
-        vec2(pr.x, pr.y + pr.h),
-        vec2(pr.x + pr.w, pr.y + pr.h),
+    draw_plane(
+        game.player.pos,
+        game.player.size,
         player_color,
+        game.player.is_invincible(),
     );
     if game.player.is_invincible() {
         let base = game.player.pos;
@@ -775,6 +774,69 @@ fn draw_menu(ui: &Ui, profile: &PlayerProfile) {
     draw_centered_text(ui, "1-5: 选择弹药  0: 取消", 440.0, 22, GRAY);
     draw_centered_text(ui, "I: 无敌  F: 自动发射", 470.0, 22, GRAY);
     draw_centered_text(ui, "Esc: 退出", 510.0, 28, WHITE);
+}
+
+fn draw_plane(pos: Vec2, size: Vec2, body: Color, boosted: bool) {
+    let w = size.x;
+    let h = size.y;
+    let half_w = w * 0.5;
+    let half_h = h * 0.5;
+
+    let nose = vec2(pos.x, pos.y - half_h);
+    let left_tail = vec2(pos.x - half_w * 0.65, pos.y + half_h * 0.75);
+    let right_tail = vec2(pos.x + half_w * 0.65, pos.y + half_h * 0.75);
+
+    let wing_span = w * 1.25;
+    let wing_y = pos.y + h * 0.05;
+    let wing_tip_left = vec2(pos.x - wing_span * 0.5, wing_y);
+    let wing_tip_right = vec2(pos.x + wing_span * 0.5, wing_y);
+    let wing_root_left = vec2(pos.x - w * 0.22, pos.y + h * 0.18);
+    let wing_root_right = vec2(pos.x + w * 0.22, pos.y + h * 0.18);
+
+    let tail_y = pos.y + h * 0.35;
+    let tail_left = vec2(pos.x - w * 0.45, tail_y + h * 0.22);
+    let tail_right = vec2(pos.x + w * 0.45, tail_y + h * 0.22);
+
+    let cockpit = Color::new(
+        (body.r + 0.25).min(1.0),
+        (body.g + 0.25).min(1.0),
+        (body.b + 0.4).min(1.0),
+        1.0,
+    );
+    let accent = Color::new(
+        (body.r + 0.15).min(1.0),
+        (body.g + 0.1).min(1.0),
+        (body.b + 0.1).min(1.0),
+        1.0,
+    );
+
+    draw_triangle(nose, left_tail, right_tail, body);
+    draw_triangle(wing_tip_left, wing_root_left, wing_root_right, accent);
+    draw_triangle(wing_tip_right, wing_root_right, wing_root_left, accent);
+    draw_triangle(vec2(pos.x, tail_y), tail_left, tail_right, accent);
+
+    let cockpit_w = w * 0.28;
+    let cockpit_h = h * 0.32;
+    draw_ellipse(
+        pos.x,
+        pos.y - h * 0.12,
+        cockpit_w * 0.5,
+        cockpit_h * 0.5,
+        0.0,
+        cockpit,
+    );
+
+    let engine_y = pos.y + half_h * 0.55;
+    draw_circle(pos.x - w * 0.15, engine_y, w * 0.08, DARKGRAY);
+    draw_circle(pos.x + w * 0.15, engine_y, w * 0.08, DARKGRAY);
+    draw_circle(pos.x - w * 0.15, engine_y, w * 0.045, ORANGE);
+    draw_circle(pos.x + w * 0.15, engine_y, w * 0.045, ORANGE);
+
+    if boosted {
+        let glow = Color::new(0.4, 0.8, 1.0, 0.5);
+        draw_circle(pos.x - w * 0.15, engine_y + h * 0.12, w * 0.12, glow);
+        draw_circle(pos.x + w * 0.15, engine_y + h * 0.12, w * 0.12, glow);
+    }
 }
 
 fn draw_game_over(ui: &Ui, profile: &PlayerProfile, game: &Game) {
