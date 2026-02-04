@@ -51,6 +51,7 @@ struct Player {
     shot_cooldown: f32,
     shot_timer: f32,
     base_bullet_level: u8,
+    manual_mode: Option<BulletMode>,
     temp_mode: Option<(BulletMode, f64)>,
 }
 
@@ -73,6 +74,9 @@ impl Player {
             if get_time() <= until {
                 return mode;
             }
+        }
+        if let Some(mode) = self.manual_mode {
+            return mode;
         }
         match self.base_bullet_level {
             1 => BulletMode::Normal,
@@ -159,6 +163,7 @@ struct Game {
     bullets: Vec<Bullet>,
     enemies: Vec<Enemy>,
     treasures: Vec<Treasure>,
+    particles: Vec<Particle>,
     score: u32,
     enemy_spawn_timer: f32,
     enemy_spawn_interval: f32,
@@ -180,6 +185,7 @@ impl Game {
             shot_cooldown: 0.14,
             shot_timer: 0.0,
             base_bullet_level: profile.permanent.bullet_level.max(1).min(3),
+            manual_mode: None,
             temp_mode: None,
         };
         Self {
@@ -187,6 +193,7 @@ impl Game {
             bullets: Vec::new(),
             enemies: Vec::new(),
             treasures: Vec::new(),
+            particles: Vec::new(),
             score: 0,
             enemy_spawn_timer: 0.0,
             enemy_spawn_interval: 0.85,
@@ -195,6 +202,15 @@ impl Game {
             auto_fire: false,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+struct Particle {
+    pos: Vec2,
+    vel: Vec2,
+    radius: f32,
+    life: f32,
+    color: Color,
 }
 
 #[derive(Default)]
@@ -417,6 +433,27 @@ fn update_playing(
     if is_key_pressed(KeyCode::F) {
         game.auto_fire = !game.auto_fire;
     }
+    if is_key_pressed(KeyCode::Key1) {
+        game.player.manual_mode = Some(BulletMode::Normal);
+    }
+    if is_key_pressed(KeyCode::Key2) {
+        game.player.manual_mode = Some(BulletMode::Double);
+    }
+    if is_key_pressed(KeyCode::Key3) {
+        game.player.manual_mode = Some(BulletMode::Triple);
+    }
+    if is_key_pressed(KeyCode::Key4) {
+        game.player.manual_mode = Some(BulletMode::Spread);
+    }
+    if is_key_pressed(KeyCode::Key5) {
+        game.player.manual_mode = Some(BulletMode::Laser);
+    }
+    if is_key_pressed(KeyCode::Key0) {
+        game.player.manual_mode = None;
+    }
+    if is_key_pressed(KeyCode::I) {
+        game.player.invincible_until = get_time() + 6.0;
+    }
 
     if let Some((_, until)) = game.player.temp_mode {
         if get_time() > until {
@@ -484,6 +521,29 @@ fn update_playing(
     for t in &mut game.treasures {
         t.pos += t.vel * dt;
     }
+
+    if game.player.is_invincible() {
+        let base = game.player.pos;
+        for _ in 0..3 {
+            let angle = rand::gen_range(0.0, std::f32::consts::TAU);
+            let radius = rand::gen_range(16.0, 26.0);
+            let pos = base + vec2(angle.cos(), angle.sin()) * radius;
+            let vel = vec2(rand::gen_range(-20.0, 20.0), rand::gen_range(-20.0, 20.0));
+            game.particles.push(Particle {
+                pos,
+                vel,
+                radius: rand::gen_range(1.0, 2.4),
+                life: rand::gen_range(0.2, 0.45),
+                color: SKYBLUE,
+            });
+        }
+    }
+
+    for p in &mut game.particles {
+        p.life -= dt;
+        p.pos += p.vel * dt;
+    }
+    game.particles.retain(|p| p.life > 0.0);
 
     let player_rect = game.player.rect();
 
@@ -637,6 +697,22 @@ fn draw_playing(ui: &Ui, profile: &PlayerProfile, game: &Game) {
         vec2(pr.x + pr.w, pr.y + pr.h),
         player_color,
     );
+    if game.player.is_invincible() {
+        let base = game.player.pos;
+        let t = get_time() as f32;
+        for i in 0..3 {
+            let phase = t * 3.0 + i as f32 * 2.1;
+            let r1 = 26.0 + phase.sin() * 4.0;
+            let r2 = 12.0 + phase.cos() * 3.0;
+            let a1 = phase;
+            let a2 = phase + 1.4;
+            let p1 = base + vec2(a1.cos(), a1.sin()) * r1;
+            let p2 = base + vec2(a2.cos(), a2.sin()) * r2;
+            let mid = (p1 + p2) * 0.5 + vec2((t * 12.0).sin(), (t * 9.0).cos()) * 4.0;
+            draw_line(p1.x, p1.y, mid.x, mid.y, 2.0, SKYBLUE);
+            draw_line(mid.x, mid.y, p2.x, p2.y, 1.5, WHITE);
+        }
+    }
 
     for enemy in &game.enemies {
         let r = enemy.rect();
@@ -664,6 +740,12 @@ fn draw_playing(ui: &Ui, profile: &PlayerProfile, game: &Game) {
             BLACK,
         );
     }
+
+    for p in &game.particles {
+        let alpha = (p.life / 0.45).clamp(0.0, 1.0);
+        let color = Color::new(p.color.r, p.color.g, p.color.b, alpha);
+        draw_circle(p.pos.x, p.pos.y, p.radius, color);
+    }
 }
 
 fn draw_paused(ui: &Ui, profile: &PlayerProfile, game: &Game) {
@@ -690,7 +772,9 @@ fn draw_menu(ui: &Ui, profile: &PlayerProfile) {
     );
     draw_centered_text(ui, "Enter: 开始游戏", 360.0, 28, WHITE);
     draw_centered_text(ui, "L: 排行榜", 400.0, 28, WHITE);
-    draw_centered_text(ui, "Esc: 退出", 440.0, 28, WHITE);
+    draw_centered_text(ui, "1-5: 选择弹药  0: 取消", 440.0, 22, GRAY);
+    draw_centered_text(ui, "I: 无敌  F: 自动发射", 470.0, 22, GRAY);
+    draw_centered_text(ui, "Esc: 退出", 510.0, 28, WHITE);
 }
 
 fn draw_game_over(ui: &Ui, profile: &PlayerProfile, game: &Game) {
