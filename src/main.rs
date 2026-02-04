@@ -16,6 +16,7 @@ fn window_conf() -> Conf {
         window_width: SCREEN_W as i32,
         window_height: SCREEN_H as i32,
         high_dpi: true,
+        window_resizable: false,
         ..Default::default()
     }
 }
@@ -26,6 +27,7 @@ enum AppMode {
     Menu,
     Leaderboard,
     Playing,
+    Paused,
     GameOver,
 }
 
@@ -162,6 +164,7 @@ struct Game {
     enemy_spawn_interval: f32,
     game_over_cooldown: f32,
     just_saved_score: bool,
+    auto_fire: bool,
 }
 
 impl Game {
@@ -189,6 +192,7 @@ impl Game {
             enemy_spawn_interval: 0.85,
             game_over_cooldown: 0.0,
             just_saved_score: false,
+            auto_fire: false,
         }
     }
 }
@@ -410,6 +414,10 @@ fn update_playing(
 ) -> io::Result<bool> {
     let dt = get_frame_time();
 
+    if is_key_pressed(KeyCode::F) {
+        game.auto_fire = !game.auto_fire;
+    }
+
     if let Some((_, until)) = game.player.temp_mode {
         if get_time() > until {
             game.player.temp_mode = None;
@@ -440,7 +448,7 @@ fn update_playing(
     );
 
     game.player.shot_timer = (game.player.shot_timer - dt).max(0.0);
-    if (is_key_down(KeyCode::Space) || is_mouse_button_down(MouseButton::Left))
+    if (game.auto_fire || is_key_down(KeyCode::Space) || is_mouse_button_down(MouseButton::Left))
         && game.player.shot_timer <= 0.0
     {
         shoot_player(game);
@@ -592,8 +600,12 @@ fn draw_playing(ui: &Ui, profile: &PlayerProfile, game: &Game) {
     );
     draw_text_ui(ui, &hud, 12.0, 26.0, 24, WHITE);
 
+    if game.auto_fire {
+        draw_text_ui(ui, "AUTO FIRE", 12.0, 50.0, 20, SKYBLUE);
+    }
     if game.player.is_invincible() {
-        draw_text_ui(ui, "INVINCIBLE", 12.0, 50.0, 20, SKYBLUE);
+        let y = if game.auto_fire { 72.0 } else { 50.0 };
+        draw_text_ui(ui, "INVINCIBLE", 12.0, y, 20, SKYBLUE);
     }
     if let Some((mode, until)) = game.player.temp_mode {
         let remain = (until - get_time()).max(0.0);
@@ -602,11 +614,16 @@ fn draw_playing(ui: &Ui, profile: &PlayerProfile, game: &Game) {
             BulletMode::Laser => "LASER",
             _ => "POWER",
         };
+        let y = match (game.auto_fire, game.player.is_invincible()) {
+            (true, true) => 94.0,
+            (true, false) | (false, true) => 72.0,
+            (false, false) => 50.0,
+        };
         draw_text_ui(
             ui,
             &format!("{label} {:.1}s", remain),
             12.0,
-            72.0,
+            y,
             20,
             GREEN,
         );
@@ -647,6 +664,14 @@ fn draw_playing(ui: &Ui, profile: &PlayerProfile, game: &Game) {
             BLACK,
         );
     }
+}
+
+fn draw_paused(ui: &Ui, profile: &PlayerProfile, game: &Game) {
+    draw_playing(ui, profile, game);
+    draw_rectangle(0.0, 0.0, SCREEN_W, SCREEN_H, Color::new(0.0, 0.0, 0.0, 0.5));
+    draw_centered_text(ui, "暂停", 300.0, 48, WHITE);
+    draw_centered_text(ui, "P/Enter: 继续", 360.0, 24, GRAY);
+    draw_centered_text(ui, "M: 返回菜单", 400.0, 24, GRAY);
 }
 
 fn draw_menu(ui: &Ui, profile: &PlayerProfile) {
@@ -799,6 +824,7 @@ async fn main() {
                 AppMode::Menu => break,
                 AppMode::Leaderboard => mode = AppMode::Menu,
                 AppMode::Playing => mode = AppMode::Menu,
+                AppMode::Paused => mode = AppMode::Menu,
                 AppMode::GameOver => mode = AppMode::Menu,
             }
         }
@@ -829,6 +855,12 @@ async fn main() {
                 draw_leaderboard(&ui, &leaderboard);
             }
             AppMode::Playing => {
+                if is_key_pressed(KeyCode::P) {
+                    mode = AppMode::Paused;
+                    draw_paused(&ui, &profile, &game);
+                    next_frame().await;
+                    continue;
+                }
                 let game_over = match update_playing(&store, &mut profile, &mut leaderboard, &mut game) {
                     Ok(v) => v,
                     Err(_) => true,
@@ -838,6 +870,14 @@ async fn main() {
                     mode = AppMode::GameOver;
                     game.game_over_cooldown = 0.3;
                 }
+            }
+            AppMode::Paused => {
+                if is_key_pressed(KeyCode::P) || is_key_pressed(KeyCode::Enter) {
+                    mode = AppMode::Playing;
+                } else if is_key_pressed(KeyCode::M) {
+                    mode = AppMode::Menu;
+                }
+                draw_paused(&ui, &profile, &game);
             }
             AppMode::GameOver => {
                 game.game_over_cooldown = (game.game_over_cooldown - get_frame_time()).max(0.0);
