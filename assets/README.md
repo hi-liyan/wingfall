@@ -4,5 +4,6 @@
 - `assets/NotoSansSC-Regular.ttf` / `assets/NotoSansSC-Regular.otf`
 - `assets/msyh.ttf`
 
-如果没有放字体文件，程序会尝试从 Windows 系统字体目录加载（例如 `C:/Windows/Fonts/simhei.ttf`）。
-
+如果没有放字体文件，程序会尝试从系统字体目录加载：
+- Windows（例如 `C:/Windows/Fonts/simhei.ttf`）
+- macOS（例如 `/System/Library/Fonts/PingFang.ttc`）
