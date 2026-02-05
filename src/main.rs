@@ -226,6 +226,7 @@ struct NameInput {
 struct Ui {
     font: Option<Font>,
     plane_sheet: Option<PlaneSheet>,
+    map_texture: Option<Texture2D>,
 }
 
 impl Ui {
@@ -710,7 +711,20 @@ fn update_playing(
 }
 
 fn draw_playing(ui: &Ui, profile: &PlayerProfile, game: &Game) {
-    clear_background(BLACK);
+    if let Some(map) = &ui.map_texture {
+        draw_texture_ex(
+            map,
+            0.0,
+            0.0,
+            WHITE,
+            DrawTextureParams {
+                dest_size: Some(vec2(SCREEN_W, SCREEN_H)),
+                ..Default::default()
+            },
+        );
+    } else {
+        clear_background(BLACK);
+    }
 
     let level = plane_level_from_score(game.score);
     let level_name = plane_level_name(level);
@@ -1083,6 +1097,16 @@ async fn load_plane_sheet() -> Option<PlaneSheet> {
     })
 }
 
+async fn load_map_texture() -> Option<Texture2D> {
+    let path = "assets/map_space.png";
+    if !Path::new(path).exists() {
+        return None;
+    }
+    let texture = load_texture(path).await.ok()?;
+    texture.set_filter(FilterMode::Nearest);
+    Some(texture)
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
     let store = SaveStore::new();
@@ -1092,6 +1116,7 @@ async fn main() {
     let ui = Ui {
         font: load_ui_font().await,
         plane_sheet: load_plane_sheet().await,
+        map_texture: load_map_texture().await,
     };
 
     let mut mode = if profile.username.trim().is_empty() {
