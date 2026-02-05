@@ -40,49 +40,9 @@ enum BulletMode {
     Laser,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum PlaneStyle {
-    Style1,
-    Style2,
-    Style3,
-    Style4,
-    Style5,
-}
-
-impl PlaneStyle {
-    const ALL: [PlaneStyle; 5] = [
-        PlaneStyle::Style1,
-        PlaneStyle::Style2,
-        PlaneStyle::Style3,
-        PlaneStyle::Style4,
-        PlaneStyle::Style5,
-    ];
-
-    fn from_u8(value: u8) -> Self {
-        let idx = (value as usize) % Self::ALL.len();
-        Self::ALL[idx]
-    }
-
-    fn to_u8(self) -> u8 {
-        match self {
-            PlaneStyle::Style1 => 0,
-            PlaneStyle::Style2 => 1,
-            PlaneStyle::Style3 => 2,
-            PlaneStyle::Style4 => 3,
-            PlaneStyle::Style5 => 4,
-        }
-    }
-
-    fn name(self) -> &'static str {
-        match self {
-            PlaneStyle::Style1 => "Style 1",
-            PlaneStyle::Style2 => "Style 2",
-            PlaneStyle::Style3 => "Style 3",
-            PlaneStyle::Style4 => "Style 4",
-            PlaneStyle::Style5 => "Style 5",
-        }
-    }
-}
+const PLANE_FRAMES: usize = 8;
+const PLANE_LEVELS: usize = 15;
+const SCORE_PER_LEVEL: u32 = 100;
 
 #[derive(Clone, Debug)]
 struct Player {
@@ -284,9 +244,9 @@ struct PlaneSheet {
 }
 
 impl PlaneSheet {
-    fn frame(&self, style: PlaneStyle, frame: usize) -> Rect {
+    fn frame(&self, level: usize, frame: usize) -> Rect {
         let col = frame % self.cols;
-        let row = (style.to_u8() as usize) % self.rows;
+        let row = level % self.rows;
         Rect::new(
             col as f32 * self.frame_w,
             row as f32 * self.frame_h,
@@ -300,17 +260,35 @@ fn clamp_vec2(v: Vec2, min: Vec2, max: Vec2) -> Vec2 {
     vec2(v.x.clamp(min.x, max.x), v.y.clamp(min.y, max.y))
 }
 
-fn shift_plane_style(current: u8, delta: i8) -> u8 {
-    let len = PlaneStyle::ALL.len() as i32;
-    let mut next = current as i32 + delta as i32;
-    next = (next % len + len) % len;
-    next as u8
-}
-
 fn plane_anim_frame() -> usize {
     let fps = 12.0;
-    let frames = 8.0;
-    ((get_time() * fps) as usize) % frames as usize
+    ((get_time() * fps) as usize) % PLANE_FRAMES
+}
+
+fn plane_level_from_score(score: u32) -> usize {
+    let idx = (score / SCORE_PER_LEVEL) as usize;
+    idx.min(PLANE_LEVELS.saturating_sub(1))
+}
+
+fn plane_level_name(level: usize) -> &'static str {
+    const NAMES: [&str; PLANE_LEVELS] = [
+        "炼气期·初期",
+        "炼气期·中期",
+        "炼气期·后期",
+        "筑基期·初期",
+        "筑基期·中期",
+        "筑基期·后期",
+        "结丹期·初期",
+        "结丹期·中期",
+        "结丹期·后期",
+        "元婴期·初期",
+        "元婴期·中期",
+        "元婴期·后期",
+        "化神期·初期",
+        "化神期·中期",
+        "化神期·后期",
+    ];
+    NAMES[level.min(PLANE_LEVELS - 1)]
 }
 
 fn draw_text_ui(ui: &Ui, text: &str, x: f32, y: f32, size: u16, color: Color) {
@@ -734,9 +712,11 @@ fn update_playing(
 fn draw_playing(ui: &Ui, profile: &PlayerProfile, game: &Game) {
     clear_background(BLACK);
 
+    let level = plane_level_from_score(game.score);
+    let level_name = plane_level_name(level);
     let hud = format!(
-        "{}  Score: {}  Lives: {}/{}",
-        profile.username, game.score, game.player.lives, game.player.max_lives
+        "{}  Score: {}  Lives: {}/{}  {}",
+        profile.username, game.score, game.player.lives, game.player.max_lives, level_name
     );
     draw_text_ui(ui, &hud, 12.0, 26.0, 24, WHITE);
 
@@ -769,13 +749,12 @@ fn draw_playing(ui: &Ui, profile: &PlayerProfile, game: &Game) {
         );
     }
 
-    let style = PlaneStyle::from_u8(profile.plane_style);
     let frame = plane_anim_frame();
     let player_color = if game.player.is_invincible() { SKYBLUE } else { LIME };
     if let Some(sheet) = &ui.plane_sheet {
         draw_plane_sprite(
             sheet,
-            style,
+            level,
             frame,
             game.player.pos,
             game.player.size,
@@ -868,14 +847,13 @@ fn draw_menu(ui: &Ui, profile: &PlayerProfile) {
     draw_centered_text(ui, "I: 无敌  F: 自动发射", 470.0, 22, GRAY);
     draw_centered_text(ui, "Esc: 退出", 510.0, 28, WHITE);
 
-    let style = PlaneStyle::from_u8(profile.plane_style);
-    let frame = plane_anim_frame();
-    draw_centered_text(ui, "Left/Right: Plane Style", 540.0, 22, GRAY);
-    draw_centered_text(ui, style.name(), 568.0, 26, WHITE);
+    draw_centered_text(ui, "飞机等级随分数提升", 540.0, 22, GRAY);
+    draw_centered_text(ui, "炼气期·初期", 568.0, 26, WHITE);
 
     let preview_pos = vec2(SCREEN_W * 0.5, 620.0);
     if let Some(sheet) = &ui.plane_sheet {
-        draw_plane_sprite(sheet, style, frame, preview_pos, vec2(58.0, 72.0), false);
+        let frame = plane_anim_frame();
+        draw_plane_sprite(sheet, 0, frame, preview_pos, vec2(58.0, 72.0), false);
     } else {
         draw_plane(preview_pos, vec2(50.0, 62.0), LIME, false);
     }
@@ -946,13 +924,13 @@ fn draw_plane(pos: Vec2, size: Vec2, body: Color, boosted: bool) {
 
 fn draw_plane_sprite(
     sheet: &PlaneSheet,
-    style: PlaneStyle,
+    level: usize,
     frame: usize,
     pos: Vec2,
     size: Vec2,
     boosted: bool,
 ) {
-    let src = sheet.frame(style, frame);
+    let src = sheet.frame(level, frame);
     draw_texture_ex(
         &sheet.texture,
         pos.x - size.x * 0.5,
@@ -1078,16 +1056,21 @@ async fn load_ui_font() -> Option<Font> {
 }
 
 async fn load_plane_sheet() -> Option<PlaneSheet> {
-    let path = "assets/planes.png";
-    if !Path::new(path).exists() {
+    let primary = "assets/planes_levels.png";
+    let fallback = "assets/planes.png";
+    let path = if Path::new(primary).exists() {
+        primary
+    } else if Path::new(fallback).exists() {
+        fallback
+    } else {
         return None;
-    }
+    };
 
     let texture = load_texture(path).await.ok()?;
     texture.set_filter(FilterMode::Nearest);
 
-    let cols = 8;
-    let rows = 5;
+    let cols = PLANE_FRAMES;
+    let rows = if path == primary { PLANE_LEVELS } else { 5 };
     let frame_w = texture.width() / cols as f32;
     let frame_h = texture.height() / rows as f32;
 
@@ -1146,14 +1129,6 @@ async fn main() {
                 draw_name_input(&ui, &name_input);
             }
             AppMode::Menu => {
-                if is_key_pressed(KeyCode::Left) || is_key_pressed(KeyCode::A) {
-                    profile.plane_style = shift_plane_style(profile.plane_style, -1);
-                    let _ = store.save_profile(&profile);
-                }
-                if is_key_pressed(KeyCode::Right) || is_key_pressed(KeyCode::D) {
-                    profile.plane_style = shift_plane_style(profile.plane_style, 1);
-                    let _ = store.save_profile(&profile);
-                }
                 if is_key_pressed(KeyCode::Enter) {
                     game = Game::new(&profile);
                     mode = AppMode::Playing;
