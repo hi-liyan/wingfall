@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PlayerProfile {
     pub username: String,
+    #[serde(default)]
+    pub plane_style: u8,
     pub permanent: PermanentUpgrades,
 }
 
@@ -14,6 +16,7 @@ impl Default for PlayerProfile {
     fn default() -> Self {
         Self {
             username: String::new(),
+            plane_style: 0,
             permanent: PermanentUpgrades::default(),
         }
     }

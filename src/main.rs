@@ -40,6 +40,50 @@ enum BulletMode {
     Laser,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PlaneStyle {
+    Style1,
+    Style2,
+    Style3,
+    Style4,
+    Style5,
+}
+
+impl PlaneStyle {
+    const ALL: [PlaneStyle; 5] = [
+        PlaneStyle::Style1,
+        PlaneStyle::Style2,
+        PlaneStyle::Style3,
+        PlaneStyle::Style4,
+        PlaneStyle::Style5,
+    ];
+
+    fn from_u8(value: u8) -> Self {
+        let idx = (value as usize) % Self::ALL.len();
+        Self::ALL[idx]
+    }
+
+    fn to_u8(self) -> u8 {
+        match self {
+            PlaneStyle::Style1 => 0,
+            PlaneStyle::Style2 => 1,
+            PlaneStyle::Style3 => 2,
+            PlaneStyle::Style4 => 3,
+            PlaneStyle::Style5 => 4,
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            PlaneStyle::Style1 => "Style 1",
+            PlaneStyle::Style2 => "Style 2",
+            PlaneStyle::Style3 => "Style 3",
+            PlaneStyle::Style4 => "Style 4",
+            PlaneStyle::Style5 => "Style 5",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct Player {
     pos: Vec2,
@@ -137,8 +181,8 @@ impl Treasure {
     fn label(&self) -> &'static str {
         match self.kind {
             TreasureKind::BulletUpgradePermanent => "B+",
-            TreasureKind::MaxLifePermanent => "♥P",
-            TreasureKind::LifePlus => "♥",
+            TreasureKind::MaxLifePermanent => "HP+",
+            TreasureKind::LifePlus => "HP",
             TreasureKind::InvincibleTimed => "I",
             TreasureKind::SpreadTimed => "S",
             TreasureKind::LaserTimed => "L",
@@ -221,6 +265,7 @@ struct NameInput {
 
 struct Ui {
     font: Option<Font>,
+    plane_sheet: Option<PlaneSheet>,
 }
 
 impl Ui {
@@ -229,8 +274,43 @@ impl Ui {
     }
 }
 
+#[derive(Clone, Debug)]
+struct PlaneSheet {
+    texture: Texture2D,
+    cols: usize,
+    rows: usize,
+    frame_w: f32,
+    frame_h: f32,
+}
+
+impl PlaneSheet {
+    fn frame(&self, style: PlaneStyle, frame: usize) -> Rect {
+        let col = frame % self.cols;
+        let row = (style.to_u8() as usize) % self.rows;
+        Rect::new(
+            col as f32 * self.frame_w,
+            row as f32 * self.frame_h,
+            self.frame_w,
+            self.frame_h,
+        )
+    }
+}
+
 fn clamp_vec2(v: Vec2, min: Vec2, max: Vec2) -> Vec2 {
     vec2(v.x.clamp(min.x, max.x), v.y.clamp(min.y, max.y))
+}
+
+fn shift_plane_style(current: u8, delta: i8) -> u8 {
+    let len = PlaneStyle::ALL.len() as i32;
+    let mut next = current as i32 + delta as i32;
+    next = (next % len + len) % len;
+    next as u8
+}
+
+fn plane_anim_frame() -> usize {
+    let fps = 12.0;
+    let frames = 8.0;
+    ((get_time() * fps) as usize) % frames as usize
 }
 
 fn draw_text_ui(ui: &Ui, text: &str, x: f32, y: f32, size: u16, color: Color) {
@@ -689,13 +769,26 @@ fn draw_playing(ui: &Ui, profile: &PlayerProfile, game: &Game) {
         );
     }
 
+    let style = PlaneStyle::from_u8(profile.plane_style);
+    let frame = plane_anim_frame();
     let player_color = if game.player.is_invincible() { SKYBLUE } else { LIME };
-    draw_plane(
-        game.player.pos,
-        game.player.size,
-        player_color,
-        game.player.is_invincible(),
-    );
+    if let Some(sheet) = &ui.plane_sheet {
+        draw_plane_sprite(
+            sheet,
+            style,
+            frame,
+            game.player.pos,
+            game.player.size,
+            game.player.is_invincible(),
+        );
+    } else {
+        draw_plane(
+            game.player.pos,
+            game.player.size,
+            player_color,
+            game.player.is_invincible(),
+        );
+    }
     if game.player.is_invincible() {
         let base = game.player.pos;
         let t = get_time() as f32;
@@ -774,6 +867,18 @@ fn draw_menu(ui: &Ui, profile: &PlayerProfile) {
     draw_centered_text(ui, "1-5: 选择弹药  0: 取消", 440.0, 22, GRAY);
     draw_centered_text(ui, "I: 无敌  F: 自动发射", 470.0, 22, GRAY);
     draw_centered_text(ui, "Esc: 退出", 510.0, 28, WHITE);
+
+    let style = PlaneStyle::from_u8(profile.plane_style);
+    let frame = plane_anim_frame();
+    draw_centered_text(ui, "Left/Right: Plane Style", 540.0, 22, GRAY);
+    draw_centered_text(ui, style.name(), 568.0, 26, WHITE);
+
+    let preview_pos = vec2(SCREEN_W * 0.5, 620.0);
+    if let Some(sheet) = &ui.plane_sheet {
+        draw_plane_sprite(sheet, style, frame, preview_pos, vec2(58.0, 72.0), false);
+    } else {
+        draw_plane(preview_pos, vec2(50.0, 62.0), LIME, false);
+    }
 }
 
 fn draw_plane(pos: Vec2, size: Vec2, body: Color, boosted: bool) {
@@ -836,6 +941,34 @@ fn draw_plane(pos: Vec2, size: Vec2, body: Color, boosted: bool) {
         let glow = Color::new(0.4, 0.8, 1.0, 0.5);
         draw_circle(pos.x - w * 0.15, engine_y + h * 0.12, w * 0.12, glow);
         draw_circle(pos.x + w * 0.15, engine_y + h * 0.12, w * 0.12, glow);
+    }
+}
+
+fn draw_plane_sprite(
+    sheet: &PlaneSheet,
+    style: PlaneStyle,
+    frame: usize,
+    pos: Vec2,
+    size: Vec2,
+    boosted: bool,
+) {
+    let src = sheet.frame(style, frame);
+    draw_texture_ex(
+        &sheet.texture,
+        pos.x - size.x * 0.5,
+        pos.y - size.y * 0.5,
+        WHITE,
+        DrawTextureParams {
+            dest_size: Some(size),
+            source: Some(src),
+            ..Default::default()
+        },
+    );
+
+    if boosted {
+        let glow = Color::new(0.4, 0.8, 1.0, 0.45);
+        draw_circle(pos.x - size.x * 0.15, pos.y + size.y * 0.3, size.x * 0.14, glow);
+        draw_circle(pos.x + size.x * 0.15, pos.y + size.y * 0.3, size.x * 0.14, glow);
     }
 }
 
@@ -944,6 +1077,29 @@ async fn load_ui_font() -> Option<Font> {
     None
 }
 
+async fn load_plane_sheet() -> Option<PlaneSheet> {
+    let path = "assets/planes.png";
+    if !Path::new(path).exists() {
+        return None;
+    }
+
+    let texture = load_texture(path).await.ok()?;
+    texture.set_filter(FilterMode::Nearest);
+
+    let cols = 8;
+    let rows = 5;
+    let frame_w = texture.width() / cols as f32;
+    let frame_h = texture.height() / rows as f32;
+
+    Some(PlaneSheet {
+        texture,
+        cols,
+        rows,
+        frame_w,
+        frame_h,
+    })
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
     let store = SaveStore::new();
@@ -952,6 +1108,7 @@ async fn main() {
     let mut leaderboard = store.load_leaderboard().unwrap_or_default();
     let ui = Ui {
         font: load_ui_font().await,
+        plane_sheet: load_plane_sheet().await,
     };
 
     let mut mode = if profile.username.trim().is_empty() {
@@ -989,6 +1146,14 @@ async fn main() {
                 draw_name_input(&ui, &name_input);
             }
             AppMode::Menu => {
+                if is_key_pressed(KeyCode::Left) || is_key_pressed(KeyCode::A) {
+                    profile.plane_style = shift_plane_style(profile.plane_style, -1);
+                    let _ = store.save_profile(&profile);
+                }
+                if is_key_pressed(KeyCode::Right) || is_key_pressed(KeyCode::D) {
+                    profile.plane_style = shift_plane_style(profile.plane_style, 1);
+                    let _ = store.save_profile(&profile);
+                }
                 if is_key_pressed(KeyCode::Enter) {
                     game = Game::new(&profile);
                     mode = AppMode::Playing;
