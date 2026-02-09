@@ -1,0 +1,50 @@
+﻿{
+  "start_map": "qingtian",
+  "maps": [
+    {
+      "id": "qingtian",
+      "name": "青天坊市",
+      "spawn": { "x": 120.0, "y": 280.0 },
+      "portals": [
+        {
+          "pos": { "x": 820.0, "y": 280.0 },
+          "radius": 26.0,
+          "to_map": "yanling",
+          "to_pos": { "x": 120.0, "y": 260.0 },
+          "is_unlocked": true
+        }
+      ],
+      "bosses": ["坊市守卫"]
+    },
+    {
+      "id": "yanling",
+      "name": "燕翎台",
+      "spawn": { "x": 120.0, "y": 260.0 },
+      "portals": [
+        {
+          "pos": { "x": 820.0, "y": 260.0 },
+          "radius": 26.0,
+          "to_map": "tianyi",
+          "to_pos": { "x": 120.0, "y": 300.0 },
+          "is_unlocked": true
+        }
+      ],
+      "bosses": ["赤焰兽"]
+    },
+    {
+      "id": "tianyi",
+      "name": "天一城",
+      "spawn": { "x": 120.0, "y": 300.0 },
+      "portals": [
+        {
+          "pos": { "x": 820.0, "y": 300.0 },
+          "radius": 26.0,
+          "to_map": "qingtian",
+          "to_pos": { "x": 120.0, "y": 280.0 },
+          "is_unlocked": true
+        }
+      ],
+      "bosses": ["青鳞王"]
+    }
+  ]
+}
